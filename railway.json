@@ -1,0 +1,16 @@
+{
+    "build": {
+      "builder": "nixpacks",
+      "config": {
+        "nixpacks": {
+          "buildCommand": "pip install -r requirements.txt",
+          "startCommand": "gunicorn app:app"
+        }
+      }
+    },
+    "deploy": {
+      "startCommand": {
+        "web": "gunicorn app:app --workers=2 --timeout 120"
+      }
+    }
+  }
