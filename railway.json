@@ -9,8 +9,7 @@
       }
     },
     "deploy": {
-      "startCommand": {
-        "web": "gunicorn app:app --workers=2 --timeout 120"
-      }
+      "startCommand": "gunicorn app:app --workers=2 --timeout 120"
     }
   }
+  
