@@ -1,7 +1,6 @@
 import re
 import logging
 import requests
-from instagram.services import pool
 
 # Configuração básica do logger
 logging.basicConfig(
@@ -18,16 +17,8 @@ SMM_CONFIG = {
 
 logger = logging.getLogger(__name__)  # Para usar com from utils import logger
 
-from instagrapi.exceptions import LoginRequired, ClientError
-from instagram.services import InstagramPool  # Ajuste o import conforme sua estrutura
-import requests
-import logging
 
-logger = logging.getLogger(__name__)
-pool = InstagramPool()  # Assume que o pool já está inicializado
 
-pool.initialize()
-client = pool.get_client()
 
 
 def check_profile_privacy(username):
