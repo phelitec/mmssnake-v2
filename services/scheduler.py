@@ -207,7 +207,7 @@ def update_delivered_orders():
 
 
 def run_scheduled_task():
-    schedule.every(20).minutes.do(check_pending_profiles)
+    schedule.every(2).minutes.do(check_pending_profiles)
     schedule.every(1).minutes.do(process_pending_payments)
     schedule.every().day.at("22:56").do(update_delivered_orders)  # Nova tarefa às 18:00
     logging.info("Agendador configurado para rodar tarefas periódicas.")
