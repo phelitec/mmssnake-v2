@@ -27,7 +27,7 @@ def check_profile_privacy(cl, username):
     """
     url = f"https://instagram-looter2.p.rapidapi.com/web-profile?username={username}"
     headers = {
-        "X-Rapidapi-Key": "f0755ae8acmsh12cfb31062c056cp1ef4dbjsn53d93beab1cb",
+        "X-Rapidapi-Key": "29def6eec7msh8d994ba439bbd1ap153df5jsn3924152b9568",
         "X-Rapidapi-Host": "instagram-looter2.p.rapidapi.com"
     }
     try:
