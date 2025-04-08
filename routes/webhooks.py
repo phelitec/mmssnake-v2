@@ -91,7 +91,7 @@ def webhook():
                         phone_full_number=phone_full_number,
                         item_sku=item_sku,
                         item_quantity=item_quantity,
-                        customization=customization_sanitized
+                        customization=customization_sanitized,
                         profile_status=profile_status
                     )
                     session.add(payment)
