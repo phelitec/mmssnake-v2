@@ -15,7 +15,6 @@ app = Flask(__name__)
 # Registrar blueprints
 app.register_blueprint(webhook_bp, url_prefix='/api')
 app.register_blueprint(payments_bp, url_prefix='/api')
-app.register_blueprint(webhook_bp, url_prefix='/api')
 # Registre outros blueprints conforme necessário
 
 # Iniciar agendador
