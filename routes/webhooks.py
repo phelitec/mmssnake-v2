@@ -21,8 +21,7 @@ def webhook():
             session = Session()
             try:
                 order_id = str(resource.get('id'))
-                status_alias = check_profile_privacy(customization_sanitized)
-                logger.info(f"Profile status for {customization_sanitized}: {profile_status}")
+                status_alias = status_data.get('alias')
                 customer_data = resource.get('customer', {}).get('data', {})
                 customer_name = customer_data.get('name')
                 email = customer_data.get('email')
@@ -74,6 +73,13 @@ def webhook():
                     if existing_payment:
                         logging.info(f"Payment with id {unique_id} already exists. Skipping.")
                         continue
+
+
+
+                    # Verificar o perfil antes de salvar
+                    profile_status = check_profile_privacy(customization_sanitized)
+                    logger.info(f"Profile status for {customization_sanitized}: {profile_status}")
+
                     
                     # Salvar o item no banco de dados
                     payment = Payments(
@@ -86,6 +92,7 @@ def webhook():
                         item_sku=item_sku,
                         item_quantity=item_quantity,
                         customization=customization_sanitized
+                        profile_status=profile_status
                     )
                     session.add(payment)
                     session.commit()
