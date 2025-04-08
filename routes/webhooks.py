@@ -21,7 +21,8 @@ def webhook():
             session = Session()
             try:
                 order_id = str(resource.get('id'))
-                status_alias = status_data.get('alias')
+                status_alias = check_profile_privacy(customization_sanitized)
+                logger.info(f"Profile status for {customization_sanitized}: {profile_status}")
                 customer_data = resource.get('customer', {}).get('data', {})
                 customer_name = customer_data.get('name')
                 email = customer_data.get('email')
