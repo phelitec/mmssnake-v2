@@ -162,7 +162,6 @@ def process_pending_payments():
                     else:
                         logging.error(f"API call failed for payment {payment.id}: {response.status_code} - {response.text}")
 
-                else:
 
         else:
             logging.info("No pending payments found with finished=0 and profile_status='public'")
