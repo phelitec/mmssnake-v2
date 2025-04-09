@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)  # Para usar com from utils import logger
 
 
 
-def check_profile_privacy(cl, username):
+def check_profile_privacy(username):
     """
     Verifica se o perfil do Instagram é público ou privado usando a API externa.
     """
@@ -36,8 +36,8 @@ def check_profile_privacy(cl, username):
         data = response.json()
         # A API retorna 'is_private' como booleano
         return "private" if data.get("is_private") else "public"
-    except requests.RequestException as e:
-        logger.error(f"Erro ao verificar status do perfil {username}: {str(e)}")
+    except Exception as e:
+        logger.error(f"Erro ao verificar perfil {username}: {str(e)}")
         return "error"
 
 #Sanitizar username conforme a Yampi 
