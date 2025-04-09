@@ -89,27 +89,6 @@ def delete_instagram_credentials(username):
     finally:
         session.close()
 
-@instagram_bp.route('/accounts', methods=['GET'])
-def list_accounts():
-    session = Session()
-    try:
-        accounts = session.query(InstagramCredentials).all()
-        result = [{
-            'id': acc.id,
-            'username': acc.username,
-            'is_active': acc.is_active,
-            'usage_count': acc.usage_count,
-            'last_used': acc.last_used.isoformat() if acc.last_used else None,
-            'rotation_interval': acc.rotation_interval
-        } for acc in accounts]
-        
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Erro ao listar contas: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
 @instagram_bp.route('/instagram/accounts', methods=['GET'])
 def list_accounts():
     session = Session()
@@ -136,4 +115,3 @@ def list_accounts():
     
     finally:
         session.close()
-
