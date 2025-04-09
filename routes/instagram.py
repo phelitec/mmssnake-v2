@@ -1,9 +1,10 @@
 from flask import Blueprint, request, jsonify
 from sqlalchemy.exc import IntegrityError
-from models.instagram import InstagramCredentials
+from models.base import InstagramCredentials  # Importando do models.base
+from database import Session
 import logging
 
-instagram_bp = Blueprint('instagram', __name__, url_prefix='/api/instagram')
+instagram_bp = Blueprint('instagram', __name__)
 logger = logging.getLogger(__name__)
 
 @instagram_bp.route('/accounts', methods=['POST'])
@@ -29,14 +30,16 @@ def add_account():
         }), 201
         
     except IntegrityError:
+        session.rollback()
         return jsonify({'error': 'Username já existe'}), 409
     except Exception as e:
+        session.rollback()
         logger.error(f"Erro: {str(e)}", exc_info=True)
         return jsonify({'error': 'Erro interno'}), 500
     finally:
         session.close()
 
-@instagram_bp.route('/instagram_credentials/<string:username>', methods=['PUT'])
+@instagram_bp.route('/accounts/<string:username>', methods=['PUT'])
 def update_instagram_credentials(username):
     data = request.get_json()
     session = Session()
@@ -66,7 +69,7 @@ def update_instagram_credentials(username):
     finally:
         session.close()
 
-@instagram_bp.route('/instagram_credentials/<username>', methods=['DELETE'])
+@instagram_bp.route('/accounts/<username>', methods=['DELETE'])
 def delete_instagram_credentials(username):
     session = Session()
     try:
@@ -82,6 +85,27 @@ def delete_instagram_credentials(username):
         }), 200
     except Exception as e:
         session.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        session.close()
+
+@instagram_bp.route('/accounts', methods=['GET'])
+def list_accounts():
+    session = Session()
+    try:
+        accounts = session.query(InstagramCredentials).all()
+        result = [{
+            'id': acc.id,
+            'username': acc.username,
+            'is_active': acc.is_active,
+            'usage_count': acc.usage_count,
+            'last_used': acc.last_used.isoformat() if acc.last_used else None,
+            'rotation_interval': acc.rotation_interval
+        } for acc in accounts]
+        
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Erro ao listar contas: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         session.close()
