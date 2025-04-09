@@ -111,26 +111,3 @@ def list_accounts():
         session.close()
 
 
-@app.route('/admin/migrate_database', methods=['POST'])
-def migrate_database():
-    # Verificar alguma autenticação básica, como uma chave secreta
-    if request.headers.get('X-Secret-Key') != os.environ.get('MIGRATION_KEY', 'seu-segredo-aqui'):
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    try:
-        # Usar o engine SQLAlchemy para executar a migração
-        from sqlalchemy import inspect
-        
-        inspector = inspect(engine)
-        
-        # Se a tabela existir, exclua-a
-        if 'instagram_credentials' in inspector.get_table_names():
-            # Código para modificar a tabela
-            Base.metadata.tables['instagram_credentials'].drop(engine)
-            
-        # Recriar as tabelas
-        Base.metadata.create_all(engine)
-        
-        return jsonify({'message': 'Database migrated successfully!'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
