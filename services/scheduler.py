@@ -38,7 +38,11 @@ def process_pending_payments():
     try:
         pending_payments = session.query(Payments).filter_by(finished=0, profile_status='public').all()
         if pending_payments:
-            
+
+            # Obter o pool de Instagram
+            from services.instagram_pool import get_instagram_pool
+            instagram_pool = get_instagram_pool()
+
             for payment in pending_payments:
                 product = session.query(ProductServices).filter_by(sku=payment.item_sku).first()
                 if not product:
@@ -55,8 +59,9 @@ def process_pending_payments():
                     try:
                         # Obter as últimas 4 publicações do perfil
                         username = payment.customization
-                        user_id = cl.user_id_from_username(username)
-                        media_list = cl.user_medias(user_id, amount=4)  # Pegar até 4 posts
+                        
+                        # Usando o pool para obter as mídias
+                        media_list = instagram_pool.get_user_media(username, amount=4)
                         
                         if not media_list:
                             logging.error(f"No media found for username {username} in payment {payment.id}")
@@ -97,19 +102,26 @@ def process_pending_payments():
                                 logging.error(f"API call failed for {post_url} in payment {payment.id}: {response.status_code} - {response.text}")
                                 all_orders_successful = False
 
+                                if response_data.get('error') == "neworder.error.not_enough_funds":
+                                    # Notificar admin
+                            admin_message = (
+                                f"⚠️ ALERTA DE FUNDOS INSUFICIENTES ⚠️\n"
+                                f"Pedido: {payment.id}\n"
+                                f"Cliente: {payment.customer_name}\n"
+                                f"Instagram: {payment.customization}\n"
+                                f"Produto: {payment.item_sku}\n"
+                                f"API: {product.api}\n"
+                                f"É necessário adicionar créditos urgentemente!"
+                            )
+                            instagram_pool.send_direct_message("seu_usuario_admin", admin_message)
+
                         # Marcar como concluído apenas se todos os pedidos foram bem-sucedidos
                         if all_orders_successful:
                             payment.finished = 1
                             session.commit()
                             logging.info(f"All likes orders placed successfully for payment {payment.id}")
 
-                            # Enviar mensagem no Direct
-                            try:
-                                message = f"Olá! 😊 Tudo certo? Passando para avisar que sua compra na Pede Pra Seguir já foi processada! 🚀 Suas curtidas vão começar a chegar em alguns minutos nas suas últimas 4 publicações. Qualquer coisa, estou por aqui para te ajudar! 💙 Obrigada por confiar na gente! 😉📲"
-                                cl.direct_send(message, [user_id])
-                                logging.info(f"Direct message sent to {username} for payment {payment.id}")
-                            except Exception as dm_error:
-                                logging.error(f"Failed to send Direct message to {username}: {str(dm_error)}")
+                        
 
                     except Exception as e:
                         logging.error(f"Error processing likes for payment {payment.id}: {str(e)}")
@@ -148,6 +160,8 @@ def process_pending_payments():
                             logging.error(f"Invalid JSON response for payment {payment.id}: {response.text}")
                     else:
                         logging.error(f"API call failed for payment {payment.id}: {response.status_code} - {response.text}")
+
+                else:
 
         else:
             logging.info("No pending payments found with finished=0 and profile_status='public'")
