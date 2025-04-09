@@ -74,12 +74,6 @@ def webhook():
                         logging.info(f"Payment with id {unique_id} already exists. Skipping.")
                         continue
 
-
-
-                    # Verificar o perfil antes de salvar
-                    profile_status = check_profile_privacy(customization_sanitized)
-                    logger.info(f"Profile status for {customization_sanitized}: {profile_status}")
-
                     
                     # Salvar o item no banco de dados
                     payment = Payments(
@@ -101,6 +95,7 @@ def webhook():
                     # Verificar o perfil do Instagram
                     
                     profile_status = check_profile_privacy(customization_sanitized)
+                    logger.info(f"Resultado de check_profile_privacy para {customization_sanitized}: {profile_status}")
                     payment.profile_status = profile_status
                     session.commit()
                     logging.info(f"Profile status for {customization_sanitized}: {profile_status}")
