@@ -7,7 +7,7 @@ import logging
 admin_bp = Blueprint('admin', __name__)
 logger = logging.getLogger(__name__)
 
-# Chave de segurança para proteger o endpoint - use uma variável de ambiente em produção
+# Chave de segurança para proteger o endpoint
 ADMIN_KEY = os.environ.get('ADMIN_KEY', 'chave-secreta-temporaria')
 
 @admin_bp.route('/fix_database', methods=['POST'])
@@ -18,39 +18,102 @@ def fix_database():
         return jsonify({'error': 'Acesso não autorizado'}), 401
     
     try:
-        # Verificar estrutura da tabela
+        # Verificar se a tabela existe
         with engine.connect() as conn:
-            # Verificar se a tabela existe
+            # Verificar tabelas existentes
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='instagram_credentials'"))
             table_exists = result.fetchone() is not None
             
             if table_exists:
-                # Verificar colunas existentes
-                result = conn.execute(text("PRAGMA table_info(instagram_credentials)"))
-                columns = [row[1] for row in result.fetchall()]
+                # Opção 1: Apagar e recriar a tabela (isso perderá dados existentes)
+                conn.execute(text("DROP TABLE instagram_credentials"))
+                logger.info("Tabela instagram_credentials excluída")
                 
-                # Colunas a verificar
-                needed_columns = ['session_id', 'proxy', 'rotation_interval']
-                missing_columns = [col for col in needed_columns if col not in columns]
-                
-                # Adicionar colunas que faltam
-                for column in missing_columns:
-                    if column == 'rotation_interval':
-                        conn.execute(text(f"ALTER TABLE instagram_credentials ADD COLUMN {column} INTEGER DEFAULT 10"))
-                    else:
-                        conn.execute(text(f"ALTER TABLE instagram_credentials ADD COLUMN {column} TEXT"))
-                    logger.info(f"Coluna {column} adicionada à tabela instagram_credentials")
+                # Recriar a tabela com todas as colunas necessárias
+                conn.execute(text("""
+                CREATE TABLE instagram_credentials (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    session_id TEXT,
+                    proxy TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    last_used TIMESTAMP,
+                    usage_count INTEGER DEFAULT 0,
+                    rotation_interval INTEGER DEFAULT 10
+                )
+                """))
+                logger.info("Tabela instagram_credentials recriada com sucesso")
                 
                 return jsonify({
-                    'message': 'Banco de dados atualizado com sucesso!',
-                    'added_columns': missing_columns
+                    'message': 'Banco de dados recriado com sucesso!',
+                    'action': 'recreated'
                 })
             else:
-                # Se a tabela não existir, cria todas as tabelas
-                from models.base import Base
-                Base.metadata.create_all(engine)
-                return jsonify({'message': 'Tabelas criadas com sucesso!'})
+                # Criar tabela do zero
+                conn.execute(text("""
+                CREATE TABLE instagram_credentials (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    password TEXT NOT NULL,
+                    session_id TEXT,
+                    proxy TEXT,
+                    is_active INTEGER DEFAULT 1,
+                    last_used TIMESTAMP,
+                    usage_count INTEGER DEFAULT 0,
+                    rotation_interval INTEGER DEFAULT 10
+                )
+                """))
+                logger.info("Tabela instagram_credentials criada do zero")
+                
+                return jsonify({
+                    'message': 'Tabela criada com sucesso!',
+                    'action': 'created'
+                })
                 
     except Exception as e:
         logger.error(f"Erro ao atualizar banco de dados: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Endpoint alternativo para adicionar colunas sem recriar a tabela
+@admin_bp.route('/add_columns', methods=['POST'])
+def add_columns():
+    # Verificar a chave de segurança
+    auth_key = request.headers.get('X-Admin-Key')
+    if not auth_key or auth_key != ADMIN_KEY:
+        return jsonify({'error': 'Acesso não autorizado'}), 401
+    
+    try:
+        with engine.connect() as conn:
+            # Verificar colunas existentes
+            result = conn.execute(text("PRAGMA table_info(instagram_credentials)"))
+            existing_columns = [row[1] for row in result.fetchall()]
+            
+            # Lista de todas as colunas necessárias e seus tipos
+            required_columns = {
+                'username': 'TEXT NOT NULL',
+                'password': 'TEXT NOT NULL',
+                'session_id': 'TEXT',
+                'proxy': 'TEXT',
+                'is_active': 'INTEGER DEFAULT 1',
+                'last_used': 'TIMESTAMP',
+                'usage_count': 'INTEGER DEFAULT 0',
+                'rotation_interval': 'INTEGER DEFAULT 10'
+            }
+            
+            # Adicionar colunas que faltam
+            added_columns = []
+            for col_name, col_type in required_columns.items():
+                if col_name not in existing_columns:
+                    conn.execute(text(f"ALTER TABLE instagram_credentials ADD COLUMN {col_name} {col_type}"))
+                    added_columns.append(col_name)
+                    logger.info(f"Coluna {col_name} adicionada")
+            
+            return jsonify({
+                'message': 'Colunas adicionadas com sucesso!',
+                'added_columns': added_columns
+            })
+            
+    except Exception as e:
+        logger.error(f"Erro ao adicionar colunas: {str(e)}")
         return jsonify({'error': str(e)}), 500
