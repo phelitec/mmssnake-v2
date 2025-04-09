@@ -9,6 +9,18 @@ from contextlib import contextmanager
 
 webhook_bp = Blueprint('webhook', __name__)
 
+# Contexto para gerenciar sessões do SQLAlchemy
+@contextmanager
+def session_scope():
+    session = Session()
+    try:
+        yield session
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 @webhook_bp.route('/webhook', methods=['POST'])
 def webhook():
@@ -20,97 +32,86 @@ def webhook():
         status_data = resource.get('status', {}).get('data', {})
         
         if status_data.get('alias') == 'paid':
-            session = Session()
-            try:
-                order_id = str(resource.get('id'))
-                status_alias = status_data.get('alias')
-                customer_data = resource.get('customer', {}).get('data', {})
-                customer_name = customer_data.get('name')
-                email = customer_data.get('email')
-                phone_full_number = customer_data.get('phone', {}).get('full_number')
-                items = resource.get('items', {}).get('data', [])
-                
-                if not items:
-                    logging.info(f"No items found in order {order_id}. Skipping.")
-                    session.close()
-                    return 'OK', 200
-                
-                # Primeiro, coletar todas as customizações disponíveis no pedido
-                available_customizations = {}
-                for index, item in enumerate(items):
-                    customizations = item.get('customizations', [])
-                    if customizations:
-                        customization = customizations[0].get('value')
-                        sanitized = sanitize_customization(customization)
-                        if sanitized:
-                            available_customizations[index] = sanitized
-                
-                # Iterar sobre todos os itens
-                for index, item in enumerate(items):
-                    item_sku = item.get('item_sku')
-                    item_quantity = item.get('quantity')
-                    customizations = item.get('customizations', [])
-                    customization = customizations[0].get('value') if customizations else None
-                    customization_sanitized = sanitize_customization(customization) if customization else None
+            with session_scope() as session:
+                try:
+                    order_id = str(resource.get('id'))
+                    status_alias = status_data.get('alias')
+                    customer_data = resource.get('customer', {}).get('data', {})
+                    customer_name = customer_data.get('name')
+                    email = customer_data.get('email')
+                    phone_full_number = customer_data.get('phone', {}).get('full_number')
+                    items = resource.get('items', {}).get('data', [])
                     
-                    # Se o item não tiver customização, tentar pegar de outro item no pedido
-                    if not customization_sanitized and available_customizations:
-                        # Pegar a primeira customização disponível que não seja do próprio item (se houver mais de uma)
-                        for other_index, other_customization in available_customizations.items():
-                            if other_index != index:  # Evitar usar a própria customização (se existir)
-                                customization_sanitized = other_customization
-                                logging.info(f"Item {index} (SKU: {item_sku}) sem customização, usando customização '{customization_sanitized}' do item {other_index}")
-                                break
+                    if not items:
+                        logging.info(f"No items found in order {order_id}. Skipping.")
+                        return jsonify({'status': 'OK', 'message': 'No items found'}), 200
                     
-                    # Se ainda assim não houver customização, logar e pular
-                    if not customization_sanitized:
-                        logging.info(f"No valid customization found for item {index} (SKU: {item_sku}) in order {order_id}. Skipping.")
-                        continue
+                    # Primeiro, coletar todas as customizações disponíveis no pedido
+                    available_customizations = {}
+                    for index, item in enumerate(items):
+                        customizations = item.get('customizations', [])
+                        if customizations:
+                            customization = customizations[0].get('value')
+                            sanitized = sanitize_customization(customization)
+                            if sanitized:
+                                available_customizations[index] = sanitized
                     
-                    # Criar um ID único para cada item
-                    unique_id = f"{order_id}_{index}"
-                    
-                    # Verificar se o item já foi registrado
-                    existing_payment = session.query(Payments).filter_by(id=unique_id).first()
-                    if existing_payment:
-                        logging.info(f"Payment with id {unique_id} already exists. Skipping.")
-                        continue
+                    # Iterar sobre todos os itens
+                    for index, item in enumerate(items):
+                        item_sku = item.get('item_sku')
+                        item_quantity = item.get('quantity')
+                        customizations = item.get('customizations', [])
+                        customization = customizations[0].get('value') if customizations else None
+                        customization_sanitized = sanitize_customization(customization) if customization else None
+                        
+                        # Se o item não tiver customização, tentar pegar de outro item no pedido
+                        if not customization_sanitized and available_customizations:
+                            # Pegar a primeira customização disponível que não seja do próprio item (se houver mais de uma)
+                            for other_index, other_customization in available_customizations.items():
+                                if other_index != index:  # Evitar usar a própria customização (se existir)
+                                    customization_sanitized = other_customization
+                                    logging.info(f"Item {index} (SKU: {item_sku}) sem customização, usando customização '{customization_sanitized}' do item {other_index}")
+                                    break
+                        
+                        # Se ainda assim não houver customização, logar e pular
+                        if not customization_sanitized:
+                            logging.info(f"No valid customization found for item {index} (SKU: {item_sku}) in order {order_id}. Skipping.")
+                            continue
+                        
+                        # Criar um ID único para cada item
+                        unique_id = f"{order_id}_{index}"
+                        
+                        # Verificar se o item já foi registrado
+                        existing_payment = session.query(Payments).filter_by(id=unique_id).first()
+                        if existing_payment:
+                            logging.info(f"Payment with id {unique_id} already exists. Skipping.")
+                            continue
 
-                    
-                    # Salvar o item no banco de dados
-                    payment = Payments(
-                        id=unique_id,
-                        order_id=order_id,
-                        status_alias=status_alias,
-                        customer_name=customer_name,
-                        email=email,
-                        phone_full_number=phone_full_number,
-                        item_sku=item_sku,
-                        item_quantity=item_quantity,
-                        customization=customization_sanitized,
-                        profile_status=profile_status
-                    )
-                    session.add(payment)
-                    session.commit()
-                    logging.info(f"Payment {unique_id} saved successfully")
-                    
-                    # Verificar o perfil do Instagram
-                    
-                    profile_status = check_profile_privacy(customization_sanitized)
-                    logger.info(f"Resultado de check_profile_privacy para {customization_sanitized}: {profile_status}")
-                    payment.profile_status = profile_status
-                    session.commit()
-                    logging.info(f"Profile status for {customization_sanitized}: {profile_status}")
+                        # Verificar o perfil do Instagram
+                        profile_status = check_profile_privacy(customization_sanitized)
+                        logging.info(f"Profile status for {customization_sanitized}: {profile_status}")
+                        
+                        # Salvar o item no banco de dados
+                        payment = Payments(
+                            id=unique_id,
+                            order_id=order_id,
+                            status_alias=status_alias,
+                            customer_name=customer_name,
+                            email=email,
+                            phone_full_number=phone_full_number,
+                            item_sku=item_sku,
+                            item_quantity=item_quantity,
+                            customization=customization_sanitized,
+                            profile_status=profile_status
+                        )
+                        session.add(payment)
+                        logging.info(f"Payment {unique_id} saved successfully")
                 
-            except Exception as e:
-                logging.error(f"Error saving payment: {str(e)}")
-                session.rollback()
-                return 'Error', 500
-            finally:
-                session.close()
+                except Exception as e:
+                    logging.error(f"Error processing webhook: {str(e)}", exc_info=True)
+                    return jsonify({'error': str(e)}), 500
     
-    return 'OK', 200
-
+    return jsonify({'status': 'OK'}), 200
 
 @webhook_bp.route('/webhook/order-created', methods=['POST'])
 def webhook_order_created():
