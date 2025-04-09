@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 @instagram_bp.route('/accounts', methods=['POST'])
 def add_account():
     data = request.json
-    session = SessionLocal()
+    session = Session()
     
     try:
         if not data.get('username') or not data.get('password'):
