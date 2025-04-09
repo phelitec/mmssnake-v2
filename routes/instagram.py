@@ -93,7 +93,7 @@ def delete_instagram_credentials(username):
 def list_accounts():
     session = Session()
     try:
-        accounts = session.query(InstagramCredential).all()
+        accounts = session.query(InstagramCredentials).all()
         result = []
         
         for account in accounts:
