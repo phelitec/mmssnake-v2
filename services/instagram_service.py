@@ -4,7 +4,7 @@ from utils import logger
 def check_profile_privacy(username):
     url = f"https://instagram-looter2.p.rapidapi.com/web-profile?username={username}"
     headers = {
-        "X-Rapidapi-Key": "bb099aa633mshc32e5a3e833a238p1ba333jsn4e4ed3a7d3ce",
+        "X-Rapidapi-Key": "29def6eec7msh8d994ba439bbd1ap153df5jsn3924152b9568",
         "X-Rapidapi-Host": "instagram-looter2.p.rapidapi.com"
     }
     try:
