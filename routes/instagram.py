@@ -110,4 +110,30 @@ def list_accounts():
     finally:
         session.close()
 
+@instagram_bp.route('/instagram/accounts', methods=['GET'])
+def list_accounts():
+    session = Session()
+    try:
+        accounts = session.query(InstagramCredential).all()
+        result = []
+        
+        for account in accounts:
+            result.append({
+                'id': account.id,
+                'username': account.username,
+                'proxy': account.proxy,
+                'is_active': account.is_active,
+                'last_used': account.last_used.isoformat() if account.last_used else None,
+                'usage_count': account.usage_count,
+                'rotation_interval': account.rotation_interval
+            })
+        
+        return jsonify(result), 200
+    
+    except Exception as e:
+        logger.error(f"Erro ao listar contas: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        session.close()
 
