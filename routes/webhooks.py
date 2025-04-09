@@ -9,17 +9,6 @@ from contextlib import contextmanager
 
 webhook_bp = Blueprint('webhook', __name__)
 
-@contextmanager
-def session_scope():
-    session = Session()
-    try:
-        yield session
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 @webhook_bp.route('/webhook', methods=['POST'])
 def webhook():
