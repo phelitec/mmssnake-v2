@@ -29,37 +29,78 @@ class InstagramAccountPool:
         self._load_initial_accounts()
 
     def _load_initial_accounts(self):
-        """Carrega todas as contas ativas do banco de dados"""
-        with self.lock:
-            accounts = self.db.query(InstagramCredentials).filter_by(is_active=True).all()
-            for account in accounts:
-                self._initialize_account(account)
-            logger.info(f"Pool inicializado com {len(accounts)} contas")
-
-    def _initialize_account(self, account):
-        """Cria uma nova instância do cliente Instagram"""
+    """Carrega todas as contas ativas do banco de dados"""
+    with self.lock:
         try:
-            cl = Client()
-            cl.delay_range = [1, 3]
+            # Limpa o pool atual
+            old_accounts = len(self.active_accounts)
+            self.active_accounts = {}
             
-            if account.session_id:
+            # Carrega novas contas
+            accounts = self.db.query(InstagramCredentials).filter_by(is_active=True).all()
+            logger.info(f"Encontradas {len(accounts)} contas ativas no banco de dados")
+            
+            success_count = 0
+            for account in accounts:
+                if self._initialize_account(account):
+                    success_count += 1
+                    
+            logger.info(f"Pool inicializado: {success_count}/{len(accounts)} contas ativas (antes: {old_accounts})")
+            
+            if success_count == 0:
+                logger.critical("NENHUMA CONTA ATIVA NO POOL! Verifique as credenciais no banco de dados.")
+        except Exception as e:
+            logger.error(f"Erro ao carregar contas iniciais: {str(e)}")
+    def _initialize_account(self, account):
+    """Cria uma nova instância do cliente Instagram"""
+    logger.info(f"Inicializando conta {account.username} (ID: {account.id})")
+    try:
+        cl = Client()
+        cl.delay_range = [1, 3]
+        
+        # Configurando proxy se disponível
+        if account.proxy:
+            logger.info(f"Configurando proxy para {account.username}: {account.proxy}")
+            cl.set_proxy(account.proxy)
+        
+        login_successful = False
+        if account.session_id:
+            try:
+                logger.info(f"Tentando login por session_id para {account.username}")
                 cl.login_by_sessionid(account.session_id)
-            else:
+                login_successful = True
+                logger.info(f"Login por session_id bem-sucedido para {account.username}")
+            except Exception as se:
+                logger.warning(f"Falha no login por session_id para {account.username}: {str(se)}")
+        
+        if not login_successful:
+            try:
+                logger.info(f"Tentando login com credenciais para {account.username}")
                 cl.login(account.username, account.password)
                 account.session_id = cl.sessionid
                 self.db.commit()
-
+                login_successful = True
+                logger.info(f"Login com credenciais bem-sucedido para {account.username}")
+            except Exception as le:
+                logger.error(f"Falha no login com credenciais para {account.username}: {str(le)}")
+                raise  # Re-raise to be caught by outer try/except
+        
+        # Verificando se o login foi bem-sucedido antes de adicionar ao pool
+        if login_successful:
             self.active_accounts[account.id] = {
                 'client': cl,
                 'account': account,
                 'in_use': False,
                 'last_used': datetime.now()
             }
-            logger.info(f"Conta {account.username} inicializada com sucesso")
+            logger.info(f"Conta {account.username} inicializada com sucesso e adicionada ao pool")
+            return True
+        return False
 
-        except Exception as e:
-            logger.error(f"Falha ao inicializar conta {account.username}: {str(e)}")
-            self._disable_account(account.id)
+    except Exception as e:
+        logger.error(f"Falha ao inicializar conta {account.username}: {str(e)}")
+        self._disable_account(account.id)
+        return False
 
     def _disable_account(self, account_id):
         """Desativa conta problemática"""
@@ -264,6 +305,22 @@ class InstagramAccountPool:
                 
         return self.execute(_get_media, username, amount)
 
+
+        def reset_pool():
+    """Reseta completamente o pool de contas do Instagram"""
+    try:
+        # Forçar a recriação da instância singleton
+        InstagramAccountPool._instance = None
+        
+        # Criar uma nova instância do pool
+        pool = InstagramAccountPool.get_instance()
+        
+        # Verificar quantas contas foram carregadas
+        status = pool.get_pool_status()
+        return f"Pool resetado com {status['available_accounts']} contas disponíveis"
+    except Exception as e:
+        logger.error(f"Erro ao resetar pool: {str(e)}")
+        return f"Erro ao resetar pool: {str(e)}"
 
 # Função auxiliar para obter a instância global do pool
 def get_instagram_pool():
