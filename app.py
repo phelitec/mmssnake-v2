@@ -3,9 +3,6 @@ from database import engine, initialize_database
 from models.base import Base
 from services.scheduler import start_scheduler
 from routes import webhook_bp, payments_bp
-from routes.instagram import instagram_bp
-from routes.admin_routes import admin_bp
-
 
 app = Flask(__name__)
 
