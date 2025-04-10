@@ -1,18 +1,20 @@
 from flask import Flask
-from database import engine
+from database import engine, initialize_database
 from models.base import Base
 from services.scheduler import start_scheduler
-from routes import webhook_bp, payments_bp  # Importe todos os blueprints
+from routes import webhook_bp, payments_bp
+from routes.instagram import instagram_bp
+from routes.admin_routes import admin_bp
 
 
 app = Flask(__name__)
 
-
+# Inicializar banco de dados
+initialize_database()
 
 # Registrar blueprints
 app.register_blueprint(webhook_bp, url_prefix='/api')
 app.register_blueprint(payments_bp, url_prefix='/api')
-# Registre outros blueprints conforme necessário
 
 # Iniciar agendador
 start_scheduler()
