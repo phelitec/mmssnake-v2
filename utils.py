@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)  # Para usar com from utils import logger
 
 def check_profile_privacy(username):
     """
-    Verifica se o perfil do Instagram é público ou privado.
-    Utiliza o pool de contas do Instagram.
+    Verifica se o perfil do Instagram é público ou privado
+    usando a API Instagram Looter.
     """
-    pool = get_instagram_pool()
-    return pool.check_profile_privacy(username)
+    instagram_service = get_instagram_service()
+    return instagram_service.check_profile_privacy(username)
 
 
 #Sanitizar username conforme a Yampi 
