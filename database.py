@@ -18,3 +18,11 @@ engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine)
 
 def initialize_database():
+    from models.base import Base
+    try:
+        Base.metadata.drop_all(bind=engine)  # Apaga todas as tabelas
+        Base.metadata.create_all(bind=engine)  # Recria as tabelas vazias
+        logger.info("Tabelas criadas com sucesso no PostgreSQL")
+    except Exception as e:
+        logger.error(f"Erro ao criar tabelas: {str(e)}")
+        raise
