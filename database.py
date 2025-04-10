@@ -3,43 +3,28 @@ from sqlalchemy.orm import sessionmaker
 import os
 import logging
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
+# Configurar logger
 logger = logging.getLogger(__name__)
 
-# Obter a URL do banco de dados
+# Obter a URL do banco de dados do Railway (PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    logger.error("DATABASE_URL não encontrada!")
-    raise ValueError("DATABASE_URL não está definida!")
 
-# Ajustar a URL, se necessário
-if DATABASE_URL.startswith("postgres://"):
+# Verificar e ajustar a URL para SQLAlchemy, se necessário
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-logger.info(f"Tentando conectar ao banco com: {DATABASE_URL}")
-
-# Verificar se o host interno está sendo usado (para debug)
-if "postgres.railway.internal" in DATABASE_URL:
-    logger.warning("Atenção: Usando host interno 'postgres.railway.internal'. Isso pode falhar!")
-
-# Criar o engine e testar a conexão
-try:
-    engine = create_engine(DATABASE_URL, echo=True)
-    with engine.connect() as conn:
-        conn.execute("SELECT 1")
-    logger.info("Conexão com PostgreSQL estabelecida com sucesso!")
-except Exception as e:
-    logger.error(f"Erro ao conectar ao banco: {str(e)}")
-    raise
-
-# Configurar a sessão
+# Sempre usar PostgreSQL no Railway, sem fallback para SQLite
+engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine)
 
 def initialize_database():
+    """
+    Inicializa o banco de dados criando todas as tabelas definidas nos modelos.
+    """
     from models.base import Base
     try:
-        Base.metadata.drop_all(bind=engine)  # Cuidado em produção!
+        # Remova todas as tabelas existentes e crie novas
+        Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         logger.info("Tabelas criadas com sucesso no PostgreSQL")
     except Exception as e:
