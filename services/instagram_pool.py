@@ -22,7 +22,7 @@ class InstagramAccountPool:
                 logger.info("Criando nova instância do pool de contas Instagram")
                 session = DBSession()
                 cls._instance = InstagramAccountPool(session)
-        return cls._instance
+            return cls._instance
     
     def __init__(self, db_session: Session):
         """Inicializa o pool de contas do Instagram"""
