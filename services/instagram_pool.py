@@ -14,12 +14,15 @@ class InstagramAccountPool:
     _instance = None
     
     @classmethod
-    def get_instance(cls):
-        """Singleton para obter a instância global do pool"""
-        if cls._instance is None:
-            session = DBSession()
-            cls._instance = InstagramAccountPool(session)
-        return cls._instance
+def get_instance(cls):
+    """Thread-safe singleton para obter a instância global do pool"""
+    if cls._instance is None:
+        with cls._lock:  # Class-level lock for thread safety
+            if cls._instance is None:  # Double-check pattern
+                logger.info("Criando nova instância do pool de contas Instagram")
+                session = DBSession()
+                cls._instance = InstagramAccountPool(session)
+    return cls._instance
     
     def __init__(self, db_session: Session):
         """Inicializa o pool de contas do Instagram"""
