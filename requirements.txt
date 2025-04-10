@@ -2,7 +2,6 @@ Flask==2.3.2
 SQLAlchemy==2.0.19
 requests==2.31.0
 schedule==1.2.0
-instagrapi==1.18.1
 gunicorn==21.2.0
 python-dotenv==1.0.0
 psycopg2-binary==2.9.7  # Para PostgreSQL no Railway
