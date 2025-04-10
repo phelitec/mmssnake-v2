@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)  # Define o nível de log globalmente
 
 # Obter a URL do banco de dados do Railway (PostgreSQL)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = ${{ Postgres.DATABASE_URL }}
 
 # Verificar se a URL foi encontrada
 if not DATABASE_URL:
