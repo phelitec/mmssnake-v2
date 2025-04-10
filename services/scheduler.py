@@ -140,18 +140,6 @@ def process_pending_payments():
                     }
                     response = requests.post(url, data=params)
                     if response.status_code == 200:
-                        if response_data.get('error') == "neworder.error.not_enough_funds":
-                                    # Notificar admin
-                                        admin_message = (
-                                            f"⚠️ ALERTA DE FUNDOS INSUFICIENTES ⚠️\n"
-                                            f"Pedido: {payment.id}\n"
-                                            f"Cliente: {payment.customer_name}\n"
-                                            f"Instagram: {payment.customization}\n"
-                                            f"Produto: {payment.item_sku}\n"
-                                            f"API: {product.api}\n"
-                                            f"É necessário adicionar créditos urgentemente!"
-                                            )
-                                    instagram_pool.send_direct_message("phelipesf", admin_message)
                         try:
                             response_data = response.json()
                             if response_data.get('order'):
