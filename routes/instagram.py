@@ -115,3 +115,12 @@ def list_accounts():
     
     finally:
         session.close()
+
+@instagram_bp.route('/accounts/pool/reset', methods=['POST'])
+def reset_instagram_pool():
+    try:
+        result = reset_pool()
+        return jsonify({"message": result}), 200
+    except Exception as e:
+        logger.error(f"Error resetting pool: {str(e)}")
+        return jsonify({"error": str(e)}), 500
