@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Obter a URL do banco de dados
-DATABASE_URL = postgresql://postgres:yRasjEscyfQlvUkAfNuhxqwLPZJVifxt@postgres-production-4a22.up.railway.app:5432/railway
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     logger.error("DATABASE_URL não encontrada!")
     raise ValueError("DATABASE_URL não está definida!")
@@ -17,7 +17,11 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-logger.info(f"Conectando ao banco com: {DATABASE_URL}")
+logger.info(f"Tentando conectar ao banco com: {DATABASE_URL}")
+
+# Verificar se o host interno está sendo usado (para debug)
+if "postgres.railway.internal" in DATABASE_URL:
+    logger.warning("Atenção: Usando host interno 'postgres.railway.internal'. Isso pode falhar!")
 
 # Criar o engine e testar a conexão
 try:
