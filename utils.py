@@ -1,7 +1,6 @@
 import re
 import logging
 import requests
-from services.instagram_pool import get_instagram_pool
 
 # Configuração básica do logger
 logging.basicConfig(
