@@ -204,6 +204,14 @@ def run_scheduled_task():
     schedule.every(5).minutes.do(process_pending_payments)
     schedule.every().day.at("19:00").do(update_delivered_orders)  # Nova tarefa às 19:00
     logging.info("Agendador configurado para rodar tarefas periódicas.")
+    while True:
+        try:
+            schedule.run_pending()
+            logging.info("Agendador rodando...")
+            time.sleep(30)
+        except Exception as e:
+            logging.error(f"Erro no loop do agendador: {str(e)}")
+            time.sleep(60)
     
 
 def start_scheduler():
