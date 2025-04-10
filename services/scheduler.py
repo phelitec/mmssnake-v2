@@ -6,6 +6,7 @@ import requests
 from database import Session
 from models.base import Payments, ProductServices
 from utils import check_profile_privacy, SMM_CONFIG
+from services.instagram_service import get_instagram_service
 
 
 # Configuração da API da Yampi
