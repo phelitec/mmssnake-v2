@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Obter a URL do banco de dados
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL=postgresql://postgres:yRasjEscyfQlvUkAfNuhxqwLPZJVifxt@postgres-production-4a22.up.railway.app:5432/railway
 if not DATABASE_URL:
     logger.error("DATABASE_URL não encontrada!")
     raise ValueError("DATABASE_URL não está definida!")
