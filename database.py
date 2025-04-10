@@ -3,40 +3,39 @@ from sqlalchemy.orm import sessionmaker
 import os
 import logging
 
-# Configurar logger
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)  # Define o nível de log globalmente
 
-# Obter a URL do banco de dados do Railway (PostgreSQL)
-DATABASE_URL = postgresql://postgres:yRasjEscyfQlvUkAfNuhxqwLPZJVifxt@centerbeam.proxy.rlwy.net:47086/railway
-
-# Verificar se a URL foi encontrada
+# Obter a URL do banco de dados
+DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    logger.error("DATABASE_URL não encontrada nas variáveis de ambiente!")
-    raise ValueError("DATABASE_URL não está definida no ambiente!")
+    logger.error("DATABASE_URL não encontrada!")
+    raise ValueError("DATABASE_URL não está definida!")
 
-# Ajustar a URL para SQLAlchemy, se necessário (postgres:// -> postgresql://)
+# Ajustar a URL, se necessário
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Criar o engine do SQLAlchemy com a URL ajustada
+logger.info(f"Conectando ao banco com: {DATABASE_URL}")
+
+# Criar o engine e testar a conexão
 try:
-    engine = create_engine(DATABASE_URL, echo=True)  # echo=True para debug
+    engine = create_engine(DATABASE_URL, echo=True)
+    with engine.connect() as conn:
+        conn.execute("SELECT 1")
+    logger.info("Conexão com PostgreSQL estabelecida com sucesso!")
 except Exception as e:
-    logger.error(f"Erro ao criar o engine do SQLAlchemy: {str(e)}")
+    logger.error(f"Erro ao conectar ao banco: {str(e)}")
     raise
 
-# Criar a fábrica de sessões
+# Configurar a sessão
 Session = sessionmaker(bind=engine)
 
 def initialize_database():
-    """
-    Inicializa o banco de dados criando todas as tabelas definidas nos modelos.
-    """
-    from models.base import Base  # Importa aqui para evitar circularidade
+    from models.base import Base
     try:
-        # Remova todas as tabelas existentes e crie novas (cuidado em produção!)
-        Base.metadata.drop_all(bind=engine)
+        Base.metadata.drop_all(bind=engine)  # Cuidado em produção!
         Base.metadata.create_all(bind=engine)
         logger.info("Tabelas criadas com sucesso no PostgreSQL")
     except Exception as e:
