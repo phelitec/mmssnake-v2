@@ -2,6 +2,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 import logging
+from dotenv import load_dotenv
+
+
+# Carrega as variáveis do arquivo .env
+load_dotenv()
 
 # Configurar logger
 logger = logging.getLogger(__name__)

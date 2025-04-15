@@ -2,6 +2,8 @@ import re
 import logging
 import requests
 from services.instagram_service import get_instagram_service
+from database import Session
+from models.base import Payments
 
 # Configuração básica do logger
 logging.basicConfig(
@@ -19,17 +21,28 @@ SMM_CONFIG = {
 logger = logging.getLogger(__name__)  # Para usar com from utils import logger
 
 
+# Apagar pedido após entregue
+def delete_payment_internal(payment_id):
+    """Função auxiliar para uso interno na aplicação."""
+    from database import Session  # Ajuste conforme necessário
+    session = Session()
+    try:
+        payment = session.query(Payments).filter_by(id=payment_id).first()
+        if not payment:
+            return False, "Pagamento não encontrado"
+        
+        session.delete(payment)
+        session.commit()
+        return True, "Pagamento deletado"
+    
+    except Exception as e:
+        session.rollback()
+        return False, str(e)
+    
+    finally:
+        session.close()
 
 
-
-
-def check_profile_privacy(username):
-    """
-    Verifica se o perfil do Instagram é público ou privado
-    usando a API Instagram Looter.
-    """
-    instagram_service = get_instagram_service()
-    return instagram_service.check_profile_privacy(username)
 
 
 #Sanitizar username conforme a Yampi 

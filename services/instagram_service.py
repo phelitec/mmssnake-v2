@@ -1,6 +1,10 @@
 import logging
 import requests
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +15,8 @@ class InstagramService:
     """
     
     # Chaves de API
-    LOOTER_API_KEY = "29def6eec7msh8d994ba439bbd1ap153df5jsn3924152b9568"
-    INSTAGRAM230_API_KEY = "edc410cc02msh10e46d66c1294b2p169869jsn17e9dfb7cac5"
+    LOOTER_API_KEY = os.getenv("LOOTER_API")
+    INSTAGRAM230_API_KEY = os.getenv("INSTAGRAM230_API")
     
     @staticmethod
     def check_profile_privacy(username):
@@ -34,7 +38,9 @@ class InstagramService:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             data = response.json()
-            return "private" if data.get("is_private") else "public"
+            is_private = data.get("data", {}).get("user", {}).get("is_private", True)
+        
+            return "private" if is_private else "public"
         except Exception as e:
             logger.error(f"Erro ao verificar perfil {username} com API: {str(e)}")
             return "error"

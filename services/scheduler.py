@@ -5,16 +5,14 @@ import threading
 import requests
 from database import Session
 from models.base import Payments, ProductServices
-from utils import check_profile_privacy, SMM_CONFIG
 from services.instagram_service import get_instagram_service
+import os
+from utils import SMM_CONFIG, delete_payment_internal
+from dotenv import load_dotenv
+from services.yampi_client import YampiClient
 
+load_dotenv()
 
-# Configuração da API da Yampi
-YAMPI_CONFIG = {
-    'api_key': 'WpBOPsu6eNio5U0OFyYHoaPLAwsqCrADFk2oOSXH',  # Substitua por sua chave real da Yampi
-    'secret_key': 'sk_Fxsjv9craEK3YgYGoQ6kWEfSHERFErbY7MZUX',
-    'base_url': 'https://api.dooki.com.br/v2/pede-pra-seguir/orders'
-}
 
 # Função para verificar perfis pendentes periodicamente
 def check_pending_profiles():
@@ -24,7 +22,7 @@ def check_pending_profiles():
         if pending_payments:
            
             for payments in pending_payments:
-                profile_status = check_profile_privacy(payments.customization)
+                profile_status = InstagramService.check_profile_privacy(payments.customization)
                 payments.profile_status = profile_status
                 session.commit()
                 logging.info(f"Updated profile status for {payments.customization}: {profile_status}")
@@ -151,57 +149,47 @@ def process_pending_payments():
         session.close()               
 
 
-# Função para atualizar pedidos como entregues no banco e na Yampi
 def update_delivered_orders():
+    from database import Session  # ou do seu local real
     session = Session()
+    client = YampiClient()
+
     try:
-        # Consultar todos os pedidos com finished = 1
         finished_payments = session.query(Payments).filter_by(finished=1).all()
         if not finished_payments:
             logging.info("Nenhum pedido com finished=1 encontrado para atualizar.")
             return
-        
-        headers = {
-            "User-Token": f"{YAMPI_CONFIG['api_key']}",
-            "User-Secret-Key": f"{YAMPI_CONFIG['secret_key']}",
-            "Content-Type": "application/json"
-        }
-        data = {
-                "status_id": "7",
-                "desire_status": "delivered"
-}
-        
+
         for payment in finished_payments:
             order_id = payment.order_id
-            url = f"{YAMPI_CONFIG['base_url']}/{order_id}"
+            success = client.update_order_status(order_id, "delivered")
             
-            try:
-                # Fazer a requisição PUT para a Yampi
-                response = requests.put(url, headers=headers, json=data)
-                
-                if response.status_code == 200 or response.status_code == 204:
-                    logging.info(f"Pedido {order_id} atualizado para 'delivered' na Yampi com sucesso.")
-                    # Opcional: Atualizar algum campo no banco, se desejar rastrear a sincronização
-                    # payment.profile_status = 'delivered'  # Exemplo
-                    # session.commit()
-                else:
-                    logging.error(f"Falha ao atualizar pedido {order_id} na Yampi: {response.status_code} - {response.text}")
-            
-            except requests.RequestException as e:
-                logging.error(f"Erro na requisição para o pedido {order_id}: {str(e)}")
-        
-        logging.info(f"Processamento de atualização de {len(finished_payments)} pedidos concluído.")
-    
+            if not success:
+                logging.error(f"Erro ao atualizar o pedido {order_id} para 'delivered'.")
+                continue
+
+            success, message = delete_payment_internal(payment.id)
+            if not success:
+                logging.error(f"Erro ao deletar o pedido {payment.id} após atualização: {message}")
+                continue
+
+            # Se quiser atualizar o banco também:
+            # payment.status_alias = "delivered"
+            # session.commit()
+
+        logging.info(f"Atualização concluída para {len(finished_payments)} pedidos.")
+
     except Exception as e:
-        logging.error(f"Erro ao processar atualização de pedidos: {str(e)}")
+        logging.error(f"Erro geral na atualização dos pedidos: {str(e)}")
         session.rollback()
     finally:
         session.close()
 
 
+
 def run_scheduled_task():
     schedule.every(10).minutes.do(check_pending_profiles)
-    schedule.every(5).minutes.do(process_pending_payments)
+    schedule.every(10).minutes.do(process_pending_payments)
     schedule.every().day.at("19:00").do(update_delivered_orders)  # Nova tarefa às 19:00
     logging.info("Agendador configurado para rodar tarefas periódicas.")
     while True:

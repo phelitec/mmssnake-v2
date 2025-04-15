@@ -1,11 +1,14 @@
-# services/yampi_client.py
 import os
 import requests
 import logging
-from typing import Dict, Optional
+from typing import Dict
 from sqlalchemy.orm import Session
+from models.base import Payments, ProductServices
+
 
 class YampiClient:
+    _instance = None
+
     STATUS_MAP = {
         'cancelled': (8, "cancelled"),
         'delivered': (7, "delivered"),
@@ -17,14 +20,23 @@ class YampiClient:
         'shipment_exception': (11, "shipment_exception")
     }
 
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(YampiClient, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
         self.base_url = os.getenv("YAMPI_BASE_URL")
         self.api_key = os.getenv("YAMPI_API_KEY")
         self.secret_key = os.getenv("YAMPI_SECRET_KEY")
         self._validate_credentials()
+        self._initialized = True
 
     def _validate_credentials(self):
-        if not all([self.api_key, self.secret_key]):
+        if not all([self.api_key, self.secret_key, self.base_url]):
             raise ValueError("Credenciais Yampi não configuradas no .env")
 
     @property
@@ -35,43 +47,22 @@ class YampiClient:
             "Content-Type": "application/json"
         }
 
-    def update_status(self, session: Session, order_id: str, status_alias: str) -> bool:
-        # Validação do status
+    def update_order_status(self, order_id: str, status_alias: str) -> bool:
         if status_alias not in self.STATUS_MAP:
-            valid_statuses = ", ".join(self.STATUS_MAP.keys())
-            raise ValueError(f"Status inválido. Valores permitidos: {valid_statuses}")
-
-        # 1. Atualiza na Yampi
-        status_id, desire_status = self.STATUS_MAP[status_alias]
-        
-        try:
-            # Chamada à API Yampi
-            response = requests.put(
-                f"{self.base_url}/{order_id}",
-                headers=self.headers,
-                json={
-                    "status_id": status_id,
-                    "desire_status": desire_status
-                }
-            )
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            logging.error(f"Falha na API Yampi: {e.response.text}")
+            logging.error(f"Status '{status_alias}' inválido. Use um dos permitidos: {list(self.STATUS_MAP.keys())}")
             return False
 
-        # 2. Atualiza o banco de dados local
+        status_id, desire_status = self.STATUS_MAP[status_alias]
+        url = f"{self.base_url}/{order_id}"
+        data = {
+            "status_id": status_id
+        }
+
         try:
-            payment = session.query(Payments).filter_by(yampi_order_id=order_id).first()
-            if not payment:
-                logging.error(f"Pedido {order_id} não encontrado no banco local")
-                return False
-            
-            payment.status_alias = status_alias
-            session.commit()
-            logging.info(f"Status atualizado para {status_alias} no pedido {order_id}")
+            response = requests.put(url, headers=self.headers, json=data)
+            response.raise_for_status()
+            logging.info(f"Pedido {order_id} atualizado para '{status_alias}' com sucesso.")
             return True
-            
-        except Exception as db_error:
-            session.rollback()
-            logging.error(f"Erro ao atualizar banco de dados: {str(db_error)}")
+        except requests.RequestException as e:
+            logging.error(f"Erro ao atualizar pedido {order_id}: {e}")
             return False

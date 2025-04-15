@@ -1,13 +1,24 @@
+import os
+import json
+import hmac
+import base64
+import hashlib
+import logging
 from flask import Blueprint, request, jsonify  
 from database import Session
 from services.yampi_client import YampiClient
 from models.base import Payments, ProductServices
 from utils import sanitize_customization
-import logging
-from utils import check_profile_privacy
+from services.instagram_service import InstagramService
 from contextlib import contextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
 
 webhook_bp = Blueprint('webhook', __name__)
+
+# Chave secreta do webhook (idealmente definida via variável de ambiente)
+WEBHOOK_SECRET = os.getenv("YAMPI_WEBHOOK_SECRET")
 
 # Contexto para gerenciar sessões do SQLAlchemy
 @contextmanager
@@ -22,11 +33,48 @@ def session_scope():
     finally:
         session.close()
 
+def calculate_hmac_signature(payload: bytes, secret: str) -> str:
+    """
+    Calcula a assinatura HMAC-SHA256 em formato Base64, igual ao exemplo em PHP.
+    :param payload: Corpo da requisição em bytes.
+    :param secret: Chave secreta do webhook.
+    :return: Assinatura em Base64.
+    """
+    hmac_digest = hmac.new(secret.encode(), payload, hashlib.sha256).digest()
+    return base64.b64encode(hmac_digest).decode()
+
 @webhook_bp.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
-    logging.info(f"Received webhook: {data}")
-    
+    # --- Validação da assinatura do webhook ---
+    # Captura o payload bruto (os mesmos bytes usados para calcular a assinatura)
+    raw_payload = request.get_data()  # bytes do corpo da requisição
+    # Recupera a assinatura enviada pelo header
+    signature_header = request.headers.get("X-Yampi-Hmac-SHA256", "")
+    if not signature_header:
+        logging.warning("Assinatura ausente no header X-Yampi-Hmac-SHA256.")
+        return jsonify({'error': 'Unauthorized: assinatura ausente'}), 401
+
+    # Calcula a assinatura localmente usando o payload e a chave secreta
+    computed_signature = calculate_hmac_signature(raw_payload, WEBHOOK_SECRET)
+    logging.info("Assinatura recebida: %s", signature_header)
+    logging.info("Assinatura calculada: %s", computed_signature)
+
+    # Se as assinaturas não coincidirem, rejeita a requisição
+    if not hmac.compare_digest(computed_signature, signature_header):
+        logging.warning("Assinatura HMAC inválida. Requisição não autorizada!")
+        return jsonify({'error': 'Unauthorized: assinatura inválida'}), 401
+
+    # --- Fim da validação de segurança ---
+
+    # Extrai o JSON do corpo da requisição
+    try:
+        data = request.get_json(force=True)
+        logging.info(f"Received webhook: {data}")
+    except Exception as e:
+        logging.error("Erro ao converter payload para JSON: %s", str(e))
+        return jsonify({'error': 'Formato de payload inválido'}), 400
+
+    # Processa o webhook conforme o evento (exemplo para 'order.paid')
     if data.get('event') == 'order.paid':
         resource = data.get('resource', {})
         status_data = resource.get('status', {}).get('data', {})
@@ -64,18 +112,36 @@ def webhook():
                         customization = customizations[0].get('value') if customizations else None
                         customization_sanitized = sanitize_customization(customization) if customization else None
                         
-                        # Se o item não tiver customização, tentar pegar de outro item no pedido
+                        # Se o item não tiver customização, tenta pegar de outro item no pedido
                         if not customization_sanitized and available_customizations:
-                            # Pegar a primeira customização disponível que não seja do próprio item (se houver mais de uma)
                             for other_index, other_customization in available_customizations.items():
-                                if other_index != index:  # Evitar usar a própria customização (se existir)
+                                if other_index != index:
                                     customization_sanitized = other_customization
-                                    logging.info(f"Item {index} (SKU: {item_sku}) sem customização, usando customização '{customization_sanitized}' do item {other_index}")
+                                    logging.info(
+                                        f"Item {index} (SKU: {item_sku}) sem customização, "
+                                        f"usando customização '{customization_sanitized}' do item {other_index}"
+                                    )
                                     break
                         
-                        # Se ainda assim não houver customização, logar e pular
+                        # Se não houver customização válida
                         if not customization_sanitized:
-                            logging.info(f"No valid customization found for item {index} (SKU: {item_sku}) in order {order_id}. Skipping.")
+                            logging.warning(
+                                f"No valid customization found for item {index} (SKU: {item_sku}) in order {order_id}. "
+                                "Atualizando status para shipment_exception."
+
+                            )
+                            try:
+                                yampi_client = YampiClient()
+                                success = yampi_client.update_order_status(order_id, 'shipment_exception')
+                                if success:
+                                    logging.info(f"Status do pedido {order_id} atualizado para shipment_exception com sucesso.")
+                                else:
+                                    logging.error(f"Falha ao atualizar status do pedido {order_id} para shipment_exception.")
+                            except Exception as update_err:
+                                logging.error(
+                                    f"Erro ao tentar atualizar o status do pedido {order_id}: {str(update_err)}",
+                                    exc_info=True
+                                )
                             continue
                         
                         # Criar um ID único para cada item
@@ -88,8 +154,27 @@ def webhook():
                             continue
 
                         # Verificar o perfil do Instagram
-                        profile_status = check_profile_privacy(customization_sanitized)
+                        profile_status = InstagramService.check_profile_privacy(customization_sanitized)
                         logging.info(f"Profile status for {customization_sanitized}: {profile_status}")
+
+                        if profile_status in ['invalid', 'private']:
+                            logging.warning(
+                                f"Perfil '{customization_sanitized}' com status '{profile_status}'. "
+                                f"Atualizando pedido {order_id} para shipment_exception."
+                            )
+                            try:
+                                yampi_client = YampiClient()
+                                success = yampi_client.update_order_status(order_id, 'shipment_exception')
+                                if success:
+                                    logging.info(f"Status do pedido {order_id} atualizado para shipment_exception com sucesso.")
+                                else:
+                                    logging.error(f"Falha ao atualizar status do pedido {order_id} para shipment_exception.")
+                            except Exception as update_err:
+                                logging.error(
+                                    f"Erro ao tentar atualizar o status do pedido {order_id}: {str(update_err)}",
+                                    exc_info=True
+                                )
+                             
                         
                         # Salvar o item no banco de dados
                         payment = Payments(
@@ -113,119 +198,6 @@ def webhook():
     
     return jsonify({'status': 'OK'}), 200
 
-@webhook_bp.route('/webhook/order-created', methods=['POST'])
-def webhook_order_created():
-    data = request.get_json()
-    logging.info(f"Received order.created webhook: {data}")
-    
-    if data.get('event') == 'order.created':
-        resource = data.get('resource', {})
-        items = resource.get('items', {}).get('data', [])
-        
-        if not items:
-            logging.info(f"No items found in order {resource.get('id')}. Skipping.")
-            return 'OK', 200
-            
-        try:
-            order_id = str(resource.get('id'))
-            cl = get_instagram_clients()  # Obtém o cliente Instagrapi
-            
-            for index, item in enumerate(items):
-                customizations = item.get('customizations', [])
-                if not customizations:
-                    logging.info(f"No customization found for item {index} in order {order_id}")
-                    continue
-                    
-                customization = customizations[0].get('value')
-                username = sanitize_customization(customization)
-                
-                if not username:
-                    logging.info(f"Could not extract username from customization: {customization}")
-                    continue
-                
-                # Verificar se o perfil existe e seguir
-                try:
-                    user_info = cl.user_info_by_username(username)
-                    user_id = user_info.pk
-                    
-                    # Seguir o usuário
-                    follow_result = cl.user_follow(user_id)
-                    logging.info(f"Follow request sent to {username} (user_id: {user_id})")
-                    
-                except Exception as e:
-                    logging.error(f"Error processing username {username}: {str(e)}")
-                    continue
-                    
-        except Exception as e:
-            logging.error(f"Error processing webhook: {str(e)}")
-            return 'Error', 500
-    
-    return 'OK', 200
-
-
-@webhook_bp.route('/webhook/order-updated', methods=['POST'])
-def webhook_order_updated():
-    """
-    Endpoint para processar o webhook 'order.updated' e enviar uma mensagem direta fixa no Instagram
-    quando o pedido for marcado como entregue (delivered: true).
-    A mensagem fixa será: "Seu pedido foi entregue com sucesso! Obrigado por sua compra."
-    """
-    data = request.get_json()
-    logging.info(f"Received order.updated webhook: {data}")
-    
-    # Verificar se é o evento correto
-    if data.get('event') != 'order.updated':
-        logging.info("Evento não é 'order.updated'. Ignorando.")
-        return 'OK', 200
-    
-    resource = data.get('resource', {})
-    
-    # Verificar se delivered é true
-    if not resource.get('delivered', False):
-        logging.info(f"Pedido {resource.get('id')} não está entregue (delivered: false). Ignorando.")
-        return 'OK', 200
-    
-    # Extrair os itens do pedido
-    items = resource.get('items', {}).get('data', [])
-    if not items:
-        logging.info(f"Nenhum item encontrado no pedido {resource.get('id')}. Ignorando.")
-        return 'OK', 200
-    
-    # Processar o primeiro item (assumindo que há apenas um item com customization)
-    item = items[0]
-    customizations = item.get('customizations', [])
-    if not customizations:
-        logging.info(f"Nenhuma customização encontrada no pedido {resource.get('id')}. Ignorando.")
-        return 'OK', 200
-    
-    # Extrair e sanitizar o username do Instagram
-    customization_value = customizations[0].get('value')
-    username = sanitize_customization(customization_value)
-    if not username:
-        logging.info(f"Não foi possível extrair username de {customization_value} no pedido {resource.get('id')}. Ignorando.")
-        return 'OK', 200
-    
-    # Mensagem fixa definida no código
-    fixed_message = os.getenv("MENSAGEM_ENTREGUE")
-    
-    try:
-        # Obter o cliente Instagrapi configurado
-        cl = get_instagram_clients()
-        
-        # Obter o ID do usuário a partir do username
-        user_id = cl.user_id_from_username(username)
-        
-        # Enviar a mensagem direta fixa
-        cl.direct_send(fixed_message, [user_id])
-        logging.info(f"Mensagem direta enviada com sucesso para {username} no pedido {resource.get('id')}: {fixed_message}")
-        
-        return jsonify({'message': f'Mensagem enviada com sucesso para {username}'}), 200
-    
-    except Exception as e:
-        logging.error(f"Erro ao enviar mensagem direta para {username} no pedido {resource.get('id')}: {str(e)}")
-        return jsonify({'error': f'Erro ao enviar mensagem: {str(e)}'}), 500              
-    
-
 
 @webhook_bp.route('/update-order-status', methods=['POST'])
 def update_order_status():
@@ -238,7 +210,7 @@ def update_order_status():
 
         yampi_client = YampiClient()  # Nome correto da variável
         
-        success = yampi_client.update_status(
+        success = yampi_client.update_order_status(
             session=session,
             order_id=data['order_id'],
             status_alias=data['status_alias']
