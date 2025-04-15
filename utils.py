@@ -13,9 +13,9 @@ logging.basicConfig(
 
 # Configuração da API SMM
 SMM_CONFIG = {
-    'machinesmm': {'base_url': 'https://machinesmm.com/api/v2', 'api_key': '7933dcebc18d85d7486c1666a1ae3d4d'},
-    'worldsmm': {'base_url': 'https://worldsmm.com.br/api/v2', 'api_key': '1287cfd6baf5e432500591201bc121e3'},
-    'smmclouduk': {'base_url': 'https://smmcloud.uk/api/v2', 'api_key': '1c900607f193909296d6c8a5573fa4c1'}
+    'machinesmm': {'base_url': 'https://machinesmm.com/api/v2', 'api_key': os.getenv('MACHINESMM_API_KEY')},
+    'worldsmm': {'base_url': 'https://worldsmm.com.br/api/v2', 'api_key': os.getenv('WORLDSMM_API_KEY')},
+    'smmclouduk': {'base_url': 'https://smmcloud.uk/api/v2', 'api_key': os.getenv('SMMCLOUDUK_API_KEY')}
 }
 
 logger = logging.getLogger(__name__)  # Para usar com from utils import logger
